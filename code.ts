@@ -1,8 +1,7 @@
-export class Codigocontrol {
-    protected d: any;
-
-    protected p: any;
-    protected inv: any;
+class CodigoControl {
+    private d: number[][];
+    private p: number[][];
+    private inv: number[];
 
     constructor() {
         this.d = [
@@ -30,121 +29,70 @@ export class Codigocontrol {
         this.inv = [0, 4, 3, 2, 1, 5, 6, 7, 8, 9];
     }
 
-    public run(authorizationNumber: any, numerofactura: any, cinit: any, fechaTransaccion: any, cuentraTransaccion: any, docificacion: any) {
+    public run(authorizationNumber: string, numerofactura: string, cinit: string, fechaTransaccion: string, cuentraTransaccion: string, docificacion: string): string {
         let transactionAmount = this.roundUp(cuentraTransaccion);
         let invoiceNumber = this.addVerhoeffDigit(numerofactura, 2);
         let nitci = this.addVerhoeffDigit(cinit, 2);
         let dateOfTransaction = this.addVerhoeffDigit(fechaTransaccion, 2);
         transactionAmount = this.addVerhoeffDigit(transactionAmount, 2);
-        let sumOfletiables = Number(invoiceNumber) + Number(nitci) + Number(dateOfTransaction) + Number(transactionAmount);
-        let sumOfletiables5Verhoeff = this.addVerhoeffDigit(sumOfletiables, 5);
-        let fiveDigitsVerhoeff = sumOfletiables5Verhoeff.substr(sumOfletiables5Verhoeff.length - 5, 5);
-        let numbers = fiveDigitsVerhoeff.split("");
-        for (let i = 0; i < 5; i++) {
-            numbers[i] = parseInt(numbers[i]) + 1;
-        }
-        let string1 = docificacion.substr(0, numbers[0]);
-        let string2 = docificacion.substr(numbers[0], numbers[1]);
-        let string3 = docificacion.substr(numbers[0] + numbers[1], numbers[2]);
-        let string4 = docificacion.substr(numbers[0] + numbers[1] + numbers[2], numbers[3]);
-        let string5 = docificacion.substr(numbers[0] + numbers[1] + numbers[2] + numbers[3], numbers[4]);
-        let authorizationNumberDKey = authorizationNumber + string1;
-        let invoiceNumberdKey = invoiceNumber + string2;
-        let NITCIDKey = nitci + string3;
-        let dateOfTransactionDKey = dateOfTransaction + string4;
-        let transactionAmountDKey = transactionAmount + string5;
-        let stringDKey = authorizationNumberDKey.toString() + invoiceNumberdKey.toString() + NITCIDKey.toString() + dateOfTransactionDKey.toString() + transactionAmountDKey.toString();
-        let keyForEncryption = docificacion.toString() + fiveDigitsVerhoeff.toString();
-        let allegedRC4String = this.encryptMessageRC4(stringDKey, keyForEncryption, true);
+        let sumOfVariables = Number(invoiceNumber) + Number(nitci) + Number(dateOfTransaction) + Number(transactionAmount);
+        let sumOfVariables5Verhoeff = this.addVerhoeffDigit(sumOfVariables.toString(), 5);
+        let fiveDigitsVerhoeff = sumOfVariables5Verhoeff.substr(sumOfVariables5Verhoeff.length - 5, 5);
+        let numbers = fiveDigitsVerhoeff.split("").map(char => parseInt(char) + 1);
+        let parts = this.splitDocificacion(docificacion, numbers);
+        let concatenatedParts = parts.map((part, index) => part + docificacion.substr(parts.slice(0, index).reduce((acc, curr) => acc + curr.length, 0), numbers[index])).join("");
+        let allegedRC4String = this.encryptMessageRC4(concatenatedParts, docificacion + fiveDigitsVerhoeff, true);
         let chars = allegedRC4String.split("");
-        let totalAmount = 0;
-        let sp1 = 0;
-        let sp2 = 0;
-        let sp3 = 0;
-        let sp4 = 0;
-        let sp5 = 0;
-        let tmp = 1;
-        for (let i = 0; i < allegedRC4String.length; i++) {
-            totalAmount += chars[i].charCodeAt(0);
-            switch (tmp) {
-                case 1:
-                    sp1 += chars[i].charCodeAt(0);
-                    break;
-                case 2:
-                    sp2 += chars[i].charCodeAt(0);
-                    break;
-                case 3:
-                    sp3 += chars[i].charCodeAt(0);
-                    break;
-                case 4:
-                    sp4 += chars[i].charCodeAt(0);
-                    break;
-                case 5:
-                    sp5 += chars[i].charCodeAt(0);
-                    break;
-            }
-            tmp = (tmp < 5) ? tmp + 1 : 1;
-        }
-        let tmp1 = Math.floor(totalAmount * sp1 / numbers[0]);
-        let tmp2 = Math.floor(totalAmount * sp2 / numbers[1]);
-        let tmp3 = Math.floor(totalAmount * sp3 / numbers[2]);
-        let tmp4 = Math.floor(totalAmount * sp4 / numbers[3]);
-        let tmp5 = Math.floor(totalAmount * sp5 / numbers[4]);
-        let sumProduct = tmp1 + tmp2 + tmp3 + tmp4 + tmp5;
+        let totalAmount = chars.reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        let sp = parts.map((part, index) => Math.floor(totalAmount * chars.slice(0, index).reduce((acc, char) => acc + char.charCodeAt(0), 0) / numbers[index]));
+        let sumProduct = sp.reduce((acc, val, index) => acc + val * parts[index].length, 0);
         let base64SIN = this.convertBase64(sumProduct);
         return this.encryptMessageRC4(base64SIN, docificacion + fiveDigitsVerhoeff, false);
     }
 
-    private addVerhoeffDigit(value, max) {
-        let val = 0;
-        for (let i = 1; i <= max; i++) {
-            val = this.generateVerhoeff(value);
+    private addVerhoeffDigit(value: string, max: number): string {
+        for (let i = 0; i < max; i++) {
+            let val = this.generateVerhoeff(value);
             value += val.toString();
         }
         return value;
     }
 
-    private roundUp(value) {
+    private roundUp(value: string): number {
         let value2 = value.replace(',', '.');
-        return Math.round(value2);
+        return Math.round(parseFloat(value2));
     }
 
-    private inletray(array: any) {
-        if (Object.prototype.toString.call(array) == "[object Number]") {
-            array = String(array);
-        }
-        if (Object.prototype.toString.call(array) == "[object String]") {
-            array = array.split("").map(Number);
-        }
-        return array.reverse();
-    }
-
-    private generateVerhoeff(array) {
+    private generateVerhoeff(array: string): number {
         let c = 0;
         let invertedArray = this.inletray(array);
         for (let i = 0; i < invertedArray.length; i++) {
-            c = this.d[c][this.p[((i + 1) % 8)][invertedArray[i]]];
+            c = this.d[c][this.p[(i + 1) % 8][invertedArray[i]]];
         }
         return this.inv[c];
     }
 
-    private validate(array) {
-        let c = 0;
-        let invertedArray = this.inletray(array);
-        for (let i = 0; i < invertedArray.length; i++) {
-            c = this.d[c][this.p[(i % 8)][invertedArray[i]]];
+    private inletray(array: string): number[] {
+        if (Object.prototype.toString.call(array) === "[object Number]") {
+            array = array.toString();
         }
-        return (c === 0);
+        if (Object.prototype.toString.call(array) === "[object String]") {
+            return array.split("").map(char => parseInt(char)).reverse();
+        }
+        return [];
     }
 
-    private convertBase64(value) {
-        let dictionary = new Array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-            "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
-            "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
-            "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d",
-            "e", "f", "g", "h", "i", "j", "k", "l", "m", "n",
-            "o", "p", "q", "r", "s", "t", "u", "v", "w", "x",
-            "y", "z", "+", "/");
+    private splitDocificacion(docificacion: string, numbers: number[]): string[] {
+        let start = 0;
+        return numbers.map(num => {
+            let part = docificacion.substr(start, num);
+            start += num;
+            return part;
+        });
+    }
+
+    private convertBase64(value: number): string {
+        let dictionary = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+/";
         let quotient = 1;
         let word = "";
         let remainder;
@@ -157,7 +105,7 @@ export class Codigocontrol {
         return word;
     }
 
-    private encryptMessageRC4(message, key, unscripted) {
+    private encryptMessageRC4(message: string, key: string, unscripted: boolean): string {
         let state = new Array(255);
         let x = 0;
         let y = 0;
@@ -169,11 +117,11 @@ export class Codigocontrol {
             state[i] = i;
         }
         for (let i = 0; i <= 255; i++) {
-            index2 = ( (key.charAt(index1).charCodeAt() ) + state[i] + index2) % 256;
+            index2 = ((key.charCodeAt(index1)) + state[i] + index2) % 256;
             let aux = state[i];
             state[i] = state[index2];
             state[index2] = aux;
-            index1 = (index1 + 1 ) % key.length;
+            index1 = (index1 + 1) % key.length;
         }
         for (let i = 0; i < message.length; i++) {
             x = (x + 1) % 256;
@@ -181,13 +129,12 @@ export class Codigocontrol {
             let aux = state[x];
             state[x] = state[y];
             state[y] = aux;
-            let nmen = ( (message.charAt(i)).charCodeAt()) ^ state[(state[x] + state[y]) % 256];
-            let nmenHex = nmen.toString(16).toUpperCase();
-            messageEncryption = messageEncryption + ( (unscripted) ? "" : "-") + ((nmenHex.length === 1) ? ('0' + nmenHex) : nmenHex);
+            let nmen = ((message.charCodeAt(i)) ^ state[(state[x] + state[y]) % 256]).toString(16).toUpperCase();
+            messageEncryption = messageEncryption + ((unscripted) ? "" : "-") + ((nmen.length === 1) ? ('0' + nmen) : nmen);
         }
         return ((unscripted) ? messageEncryption : messageEncryption.substring(1, messageEncryption.length));
     }
 }
 
-let codigoControl = new Codigocontrol();
-let cod:string = codigoControl.run(authorizationNumber, numerofactura, cinit, fechaTransaccion, cuentraTransaccion, docificacion);
+let codigoControl = new CodigoControl();
+let cod: string = codigoControl.run(authorizationNumber, numerofactura, cinit, fechaTransaccion, cuentraTransaccion, docificacion);
